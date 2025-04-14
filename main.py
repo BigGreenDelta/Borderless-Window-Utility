@@ -16,6 +16,7 @@ WIDTH_KEY = "width"
 HEIGHT_KEY = "height"
 H_RES_KEY = "HRes"
 V_RES_KEY = "VRes"
+HWND_KEY = "hwnd"
 
 # Event Keys
 EXIT_EVENT = "exit"
@@ -35,8 +36,6 @@ X_POS = 0
 Y_POS = 0
 H_RES = 0
 V_RES = 0
-# HWND: int | None = None
-HWND = None
 WINDOW: sg.Window | None = None
 
 
@@ -110,7 +109,7 @@ def win_enum_handler(hwnd, ctx):
         s = win32api.GetWindowLong(hwnd, win32con.GWL_STYLE)
         x = win32api.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
         if n:
-            ALL_VISIBLE_WINDOWS.update({n: {"hwnd": hwnd, "STYLE": s, "EXSTYLE": x}})
+            ALL_VISIBLE_WINDOWS.update({n: {HWND_KEY: hwnd, "STYLE": s, "EXSTYLE": x}})
 
 
 def create_window():
@@ -147,25 +146,25 @@ def create_window():
             sg.Exit(key=EXIT_EVENT),
         ],
     ]
-    WINDOW = sg.Window("Borderless Window Utility", layout)
+    WINDOW = sg.Window("Borderless Window Utility", layout, finalize=True)
 
 
-def update_borderless_window():
-    global X_POS, Y_POS, H_RES, V_RES, HWND, ALL_VISIBLE_WINDOWS
+def update_borderless_window(hwnd):
+    global X_POS, Y_POS, H_RES, V_RES, ALL_VISIBLE_WINDOWS
 
     try:
-        win32gui.GetWindowRect(HWND)
+        win32gui.GetWindowRect(hwnd)
     except:
         print("Window not found, reloading list")
         refresh_all_visible_windows()
     else:
-        user32.SetWindowLongW(HWND, win32con.GWL_STYLE, win32con.WS_VISIBLE | win32con.WS_CLIPCHILDREN)
-        user32.SetWindowLongW(HWND, win32con.GWL_EXSTYLE, 0)
-        user32.MoveWindow(HWND, X_POS, Y_POS, H_RES, V_RES, True)
+        user32.SetWindowLongW(hwnd, win32con.GWL_STYLE, win32con.WS_VISIBLE | win32con.WS_CLIPCHILDREN)
+        user32.SetWindowLongW(hwnd, win32con.GWL_EXSTYLE, 0)
+        user32.MoveWindow(hwnd, X_POS, Y_POS, H_RES, V_RES, True)
         V_RES = V_RES + 1
         H_RES = H_RES + 1
         win32gui.SetWindowPos(
-            HWND,
+            hwnd,
             None,
             X_POS,
             Y_POS,
@@ -173,41 +172,71 @@ def update_borderless_window():
             V_RES,
             win32con.SWP_FRAMECHANGED | win32con.SWP_NOZORDER | win32con.SWP_NOOWNERZORDER,
         )
-        window_size_update(HWND)
+        window_size_update(hwnd)
+
+
+def auto_borderless(hwnd):
+    title = win32gui.GetWindowText(hwnd)
+    if title in PROFILES:
+        print("Profile found, applying settings")
+        window_size_update(hwnd)
+    update_borderless_window(hwnd)
+
+
+def try_auto_borderless():
+    global ALL_VISIBLE_WINDOWS, PROFILES
+
+    found_profile = None
+    hwnd = None
+
+    for title, window in ALL_VISIBLE_WINDOWS.items():
+        if title in PROFILES:
+            if found_profile is None:
+                found_profile = title
+                hwnd = window[HWND_KEY]
+            else:
+                return
+
+    if found_profile is not None and hwnd is not None:
+        print(f"Found the only one profile: '{found_profile}', applying settings")
+        WINDOW.Element(COMBO_KEY_EVENT).update(value=found_profile)
+        auto_borderless(hwnd)
 
 
 def main():
-    global X_POS, Y_POS, H_RES, V_RES, HWND, ALL_VISIBLE_WINDOWS
+    global X_POS, Y_POS, H_RES, V_RES, ALL_VISIBLE_WINDOWS
 
     read_profiles()
     refresh_all_visible_windows()
     create_window()
 
+    try_auto_borderless()
+
     while True:
         event, values = WINDOW.read()
-
-        HWND = ALL_VISIBLE_WINDOWS.get(values.get(COMBO_KEY_EVENT, None), {}).get("hwnd", None)
 
         if event == sg.WIN_CLOSED or event == EXIT_EVENT:
             break
 
+        hwnd = ALL_VISIBLE_WINDOWS.get(values.get(COMBO_KEY_EVENT, None), {}).get(HWND_KEY, None)
+
         if event == BORDERLESS_WINDOW_EVENT:
-            update_borderless_window()
+            update_borderless_window(hwnd)
 
         if event == REVERT_CHANGES_EVENT:
             try:
-                win32gui.GetWindowRect(HWND)
+                win32gui.GetWindowRect(hwnd)
             except:
                 print("Window not found, reloading list")
                 refresh_all_visible_windows()
             else:
                 style = ALL_VISIBLE_WINDOWS.get(values[COMBO_KEY_EVENT], {}).get("STYLE")
                 exstyle = ALL_VISIBLE_WINDOWS.get(values[COMBO_KEY_EVENT], {}).get("EXSTYLE")
-                rect = win32gui.GetWindowRect(HWND)
-                user32.SetWindowLongW(HWND, win32con.GWL_STYLE, style)
-                user32.SetWindowLongW(HWND, win32con.GWL_EXSTYLE, exstyle)
+                rect = win32gui.GetWindowRect(hwnd)
+                user32.SetWindowLongW(hwnd, win32con.GWL_STYLE, style)
+                user32.SetWindowLongW(hwnd, win32con.GWL_EXSTYLE, exstyle)
                 win32gui.SetWindowPos(
-                    HWND,
+                    hwnd,
                     None,
                     0,
                     0,
@@ -219,11 +248,11 @@ def main():
                     | win32con.SWP_NOZORDER
                     | win32con.SWP_NOOWNERZORDER,
                 )
-                window_size_update(HWND)
+                window_size_update(hwnd)
 
         if event == RESIZE_EVENT:
             try:
-                win32gui.GetWindowRect(HWND)
+                win32gui.GetWindowRect(hwnd)
             except:
                 print("Window not found, reloading list")
                 refresh_all_visible_windows()
@@ -232,25 +261,20 @@ def main():
                 Y_POS = int(values[Y_KEY])
                 H_RES = int(values[H_RES_KEY])
                 V_RES = int(values[V_RES_KEY])
-                user32.MoveWindow(HWND, X_POS, Y_POS, H_RES, V_RES, True)
-                window_size_update(HWND)
+                user32.MoveWindow(hwnd, X_POS, Y_POS, H_RES, V_RES, True)
+                window_size_update(hwnd)
 
         if event == REFRESH_EVENT:
             refresh_all_visible_windows()
 
         if event == COMBO_KEY_EVENT:
             try:
-                win32gui.GetWindowRect(HWND)
+                win32gui.GetWindowRect(hwnd)
             except:
                 print("Window not found, reloading list")
                 refresh_all_visible_windows()
             else:
-                title = win32gui.GetWindowText(HWND)
-                if title in PROFILES:
-                    print("Profile found, applying settings")
-                    window_size_update(HWND)
-                update_borderless_window()
-
+                auto_borderless(hwnd)
 
 
 if __name__ == "__main__":
