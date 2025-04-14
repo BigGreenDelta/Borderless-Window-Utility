@@ -44,11 +44,11 @@ If the window title contains 'Stationeers' the profile values will be used enter
 
 # Notes
 
-Created/Used on Windows 10.  
-Windows 11 has not been tested.  
+Used and updated for Windows 11.
+Created on Windows 10 however it has not been tested long after the creation.
 Will not function on any other operating system.
 
-![image](https://user-images.githubusercontent.com/38366720/149036396-e7a4cc81-6004-4a3f-b5a1-d10007f587f7.png)
+![image](https://github.com/user-attachments/assets/97128673-2620-4a85-bfb8-1ab7ee11db30)
 
 
 The real reason I made this:  

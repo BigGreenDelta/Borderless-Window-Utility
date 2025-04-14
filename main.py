@@ -27,8 +27,9 @@ RESIZE_EVENT = "Apply"
 BORDERLESS_WINDOW_EVENT = "Borderless Window"
 REVERT_CHANGES_EVENT = "Normal Window"
 REFRESH_EVENT = "Refresh"
-SAVE_PROFILE_EVENT = "Save"
-LOAD_PROFILE_EVENT = "Load"
+SAVE_PRESET_EVENT = "Save"
+LOAD_PRESET_EVENT = "Load"
+DELETE_PRESET_EVENT = "Delete"
 COMBO_KEY_EVENT = "combo"
 
 
@@ -93,6 +94,25 @@ def save_window_profile(hwnd):
         config[title][Y_KEY] = str(Y_POS)
         config[title][WIDTH_KEY] = str(H_RES)
         config[title][HEIGHT_KEY] = str(V_RES)
+
+        config.write(output_file)
+
+
+def delete_window_profile(hwnd):
+    title = win32gui.GetWindowText(hwnd)
+    if not title:
+        sg.popup_error("Please select a window first.")
+        return
+
+    profile_path = profile_file_path()
+
+    config = configparser.ConfigParser()
+    config.read(profile_path)
+
+    output_config = Path(profile_path)
+    profile_path.parent.mkdir(exist_ok=True, parents=True)
+    with output_config.open("w") as output_file:
+        config.remove_section(title)
 
         config.write(output_file)
 
@@ -181,8 +201,10 @@ def create_window():
         [sg.HorizontalSeparator(), sg.Text("Positioning", font="bold"), sg.HorizontalSeparator()],
         [
             sg.Text("Preset:", size=7),
-            sg.Button(SAVE_PROFILE_EVENT, size=9),
-            sg.Button(LOAD_PROFILE_EVENT, size=9),
+            sg.Button(SAVE_PRESET_EVENT, size=9),
+            sg.Button(LOAD_PRESET_EVENT, size=9),
+            sg.HorizontalSeparator(),
+            sg.Button(DELETE_PRESET_EVENT, size=9),
         ],
         [
             sg.Text("Position:", size=7),
@@ -205,7 +227,8 @@ def create_window():
         [sg.HorizontalSeparator(), sg.Text("Style", font="bold"), sg.HorizontalSeparator()],
         [
             sg.Button(BORDERLESS_WINDOW_EVENT, size=16),
-            sg.Button(REVERT_CHANGES_EVENT, size=16),
+            # TODO: It's not working on Windows 11
+            # sg.Button(REVERT_CHANGES_EVENT, size=16),
         ],
         [sg.HorizontalSeparator()],
         [
@@ -339,11 +362,14 @@ def main():
             else:
                 auto_borderless(hwnd)
 
-        if event == SAVE_PROFILE_EVENT:
+        if event == SAVE_PRESET_EVENT:
             save_window_profile(hwnd)
 
-        if event == LOAD_PROFILE_EVENT:
+        if event == LOAD_PRESET_EVENT:
             window_size_update(hwnd)
+
+        if event == DELETE_PRESET_EVENT:
+            delete_window_profile(hwnd)
 
 
 if __name__ == "__main__":
