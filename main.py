@@ -1,13 +1,13 @@
+import argparse
+import configparser
+import ctypes
 import sys
 from pathlib import Path
 
-import win32gui
-import ctypes
-import win32con
-import win32api
 import FreeSimpleGUI as sg
-import configparser
-
+import win32api
+import win32con
+import win32gui
 
 PROFILE_FILE = "profiles.ini"
 
@@ -43,6 +43,19 @@ Y_POS = 0
 H_RES = 0
 V_RES = 0
 WINDOW: sg.Window | None = None
+
+
+def get_configs() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Borderless Window Utility")
+    parser.add_argument(
+        "-a",
+        "--apply-and-exit",
+        action="store_true",
+        default=False,
+        dest="apply_and_exit",
+        help="Automatically try to apply borderless window from profiles and exit",
+    )
+    return parser.parse_args()
 
 
 def profile_file_path() -> Path:
@@ -301,6 +314,10 @@ def main():
     create_window()
 
     try_auto_borderless()
+
+    args = get_configs()
+    if args.apply_and_exit is True:
+        exit()
 
     while True:
         event, values = WINDOW.read()
