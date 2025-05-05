@@ -2,3 +2,4 @@ pypiwin32==223
 FreeSimpleGUI==5.2.0
 pywin32==310
 ruff~=0.11.5
+pyinstaller~=6.13.0
