@@ -3,14 +3,28 @@ name: Release Build
 on:
   push:
     branches: [ "main" ]
+    tags:
+      - "v*.*.*"
   pull_request:
     branches: [ "main" ]
+    tags:
+      - "v*.*.*"
+
+env:
+  # Path to the solution file relative to the root of the project.
+  SOLUTION_FILE_PATH: '.'
+  TEMP_PATH: '.temp'
+  DIST_PATH: '.dist'
+  ARTIFACT_NAME: 'Borderless-Window-Utility'
+  ARTIFACT_PATH: '.dist/Borderless-Window-Utility.exe'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release-build:
+    if: github.ref_type == 'tag'
+
     runs-on: windows-latest
 
     steps:
@@ -25,10 +39,17 @@ jobs:
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install -r requirements.txt
-          pyinstaller --onefile --noconsole --name "Borderless-Window-Utility" --distpath ".dist" --workpath ".temp" --specpath ".temp" main.py
+          pyinstaller --onefile --noconsole --name "${{ env.ARTIFACT_NAME }}" --distpath "${{ env.DIST_PATH }}" --workpath "${{ env.TEMP_PATH }}" --specpath "${{ env.TEMP_PATH }}" main.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Borderless-Window-Utility
+          path: ${{ env.ARTIFACT_PATH }}
+          if-no-files-found: error
 
       - name: Release
         uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag'
         with:
-          files: .dist/Borderless-Window-Utility.exe
+          files: ${{ env.ARTIFACT_PATH }}
+          fail_on_unmatched_files: true
