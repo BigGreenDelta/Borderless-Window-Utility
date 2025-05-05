@@ -4,7 +4,14 @@ Modifies window style to force most applications into a borderless windowed mode
 
 # Usage
 
-Install Python, probably from the [Microsoft Store](https://apps.microsoft.com/store/detail/python-310/9PJPW5LDXLZ5).
+## Just download
+[![Release Build](https://github.com/BigGreenDelta/Borderless-Window-Utility/actions/workflows/python-build-publish.yml/badge.svg)](https://github.com/BigGreenDelta/Borderless-Window-Utility/actions/workflows/python-build-publish.yml)
+
+Download `Borderless-Window-Utility.exe` [from the latest releases page](https://github.com/BigGreenDelta/Borderless-Window-Utility/releases/latest) and run it like any other executable file!
+
+## Manually
+
+Install Python 3.12, probably from the [Microsoft Store](https://apps.microsoft.com/store/detail/python-310/9PJPW5LDXLZ5).
 
 Checkout the code
 
