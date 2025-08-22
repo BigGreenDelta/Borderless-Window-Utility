@@ -1,3 +1,25 @@
-﻿[tool.ruff]
-# But use a different line length.
+[project]
+name = "borderless-window-utility"
+version = "3.0.0"
+description = "Utility to toggle borderless window mode and resize positions on Windows."
+readme = "README.md"
+requires-python = ">=3.12"
+
+# Runtime dependencies
+dependencies = [
+    "FreeSimpleGUI==5.2.0",
+    "pywin32==311",
+]
+
+[project.scripts]
+borderless-window-utility = "main:main"
+
+[tool.uv]
+# Developer-only dependencies
+dev-dependencies = [
+    "ruff~=0.12.10",
+    "pyinstaller~=6.15.0",
+]
+
+[tool.ruff]
 line-length = 120

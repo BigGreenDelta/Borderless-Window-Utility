@@ -9,19 +9,34 @@ Modifies window style to force most applications into a borderless windowed mode
 
 Download `Borderless-Window-Utility.exe` [from the latest releases page](https://github.com/BigGreenDelta/Borderless-Window-Utility/releases/latest) and run it like any other executable file!
 
-## Manually
+### Command-line (headless) usage
+You can run the tool without opening the UI to apply borderless mode automatically:
 
-Install Python 3.12, probably from the [Microsoft Store](https://apps.microsoft.com/store/detail/python-310/9PJPW5LDXLZ5).
+- Apply to the only window that matches a saved profile and exit:
+  `Borderless-Window-Utility.exe --apply-and-exit`
+  - Returns exit code 0 on success, 1 if no single match is found.
 
-Checkout the code
 
-Create a virtual environment by running `python -m venv .venv`.
+## Using the provided batch files
 
-Activate environment with `.venv\Scripts\activate`.
+The repository includes Windows batch files to simplify setup, running, and building.
 
-Update the requirements by running `pip install -r requirements.txt`.
+- One-time setup (installs uv):
+  - Double-click `setup_once.bat`.
 
-Run `python main.py`.
+- Run headless (apply and exit):
+  - Double-click `run-apply-and-exit.bat`.
+  - Returns exit code 0 on success, 1 if no single match is found.
+
+- Build the executable from source:
+  - Double-click `tools\\build.bat`.
+  - Output will be in the `.dist` directory.
+
+- Run the full GUI:
+  - Double-click `run.bat`.
+  - Alternatively, from a terminal:
+    - `uv sync`
+    - `uv run main.py`
 
 Select an application in dropdown and click Borderless Window to remove the title bar, any borders, and the ability to resize the application with a border. Use the coordinates to determine where you want the window to be, and and adjust the resolution as desired. Some applications are fine adapting to non-traditional resolutions, but some will start to stretch.  
   
