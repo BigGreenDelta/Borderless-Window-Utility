@@ -13,6 +13,7 @@ import win32gui
 
 # Basic logging setup
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s]: %(message)s")
+log = logging.getLogger(__name__)
 
 
 PROFILE_FILE = "profiles.ini"
@@ -83,7 +84,7 @@ def read_profiles():
     try:
         config.read(profile_file_path())
     except Exception as e:
-        logging.warning(f"Failed to read profiles: {e}")
+        log.warning(f"Failed to read profiles: {e}")
         return PROFILES
 
     for section in config.sections():
@@ -95,7 +96,7 @@ def read_profiles():
                 HEIGHT_KEY: config[section].get(HEIGHT_KEY, fallback=config[section].get(HEIGHT_KEY, "600")),
             }
         except Exception as e:
-            logging.warning(f"Invalid profile section '{section}': {e}")
+            log.warning(f"Invalid profile section '{section}': {e}")
 
     return PROFILES
 
@@ -300,13 +301,13 @@ def update_borderless_window(hwnd):
     global X_POS, Y_POS, H_RES, V_RES, ALL_VISIBLE_WINDOWS
 
     if not is_valid_hwnd(hwnd):
-        logging.warning("Please select a valid window.")
+        log.warning("Please select a valid window.")
         return
 
     try:
         win32gui.GetWindowRect(hwnd)
     except Exception:
-        logging.info("Window not found, reloading list")
+        log.info("Window not found, reloading list")
         refresh_all_visible_windows()
         return
 
@@ -337,7 +338,7 @@ def update_borderless_window(hwnd):
 def auto_borderless(hwnd):
     title = win32gui.GetWindowText(hwnd)
     if title in PROFILES:
-        logging.info("Profile found, applying settings")
+        log.info("Profile found, applying settings")
         window_size_update(hwnd)
     update_borderless_window(hwnd)
 
@@ -352,10 +353,10 @@ def try_auto_borderless(preferred_title: str | None = None) -> bool:
             if needle in title.lower():
                 if WINDOW is not None:
                     WINDOW[COMBO_KEY_EVENT].update(value=title)
-                logging.info(f"Applying settings to target title: '{title}'")
+                log.info(f"Applying settings to target title: '{title}'")
                 auto_borderless(window[HWND_KEY])
                 return True
-        logging.warning(f"No window matching target title: '{preferred_title}' found.")
+        log.warning(f"No window matching target title: '{preferred_title}' found.")
         # fall through to profile-based selection
 
     found_profile = None
@@ -367,17 +368,17 @@ def try_auto_borderless(preferred_title: str | None = None) -> bool:
                 found_profile = title
                 hwnd = window[HWND_KEY]
             else:
-                logging.info("Multiple profile matches found; refusing to auto-apply.")
+                log.info("Multiple profile matches found; refusing to auto-apply.")
                 return False
 
     if None not in (found_profile, hwnd):
-        logging.info(f"Found the only one profile: '{found_profile}', applying settings")
+        log.info(f"Found the only one profile: '{found_profile}', applying settings")
         if WINDOW is not None:
             WINDOW[COMBO_KEY_EVENT].update(value=found_profile)
         auto_borderless(hwnd)
         return True
 
-    logging.info("No matching profiles found to auto-apply.")
+    log.info("No matching profiles found to auto-apply.")
     return False
 
 
@@ -398,7 +399,7 @@ def window_event_loop():
         try:
             win32gui.GetWindowRect(hwnd)
         except Exception:
-            logging.info("Window not found, reloading list")
+            log.info("Window not found, reloading list")
             refresh_all_visible_windows()
         else:
             style = ALL_VISIBLE_WINDOWS.get(values.get(COMBO_KEY_EVENT), {}).get("STYLE")
@@ -425,7 +426,7 @@ def window_event_loop():
         try:
             win32gui.GetWindowRect(hwnd)
         except Exception:
-            logging.info("Window not found, reloading list")
+            log.info("Window not found, reloading list")
             refresh_all_visible_windows()
         else:
             window_size_update(hwnd, from_ui=True)
@@ -438,7 +439,7 @@ def window_event_loop():
         try:
             win32gui.GetWindowRect(hwnd)
         except Exception:
-            logging.info("Window not found, reloading list")
+            log.info("Window not found, reloading list")
             refresh_all_visible_windows()
         else:
             auto_borderless(hwnd)
