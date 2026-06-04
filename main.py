@@ -460,7 +460,7 @@ def window_event_loop():
             log.info("Window not found, reloading list")
             refresh_all_visible_windows()
         else:
-            auto_borderless(hwnd)
+            window_size_update(hwnd)
 
     if event == SAVE_PRESET_EVENT:
         save_window_profile(hwnd)
