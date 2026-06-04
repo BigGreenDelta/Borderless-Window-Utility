@@ -53,7 +53,7 @@ Reverts the window to the original style. Falls back to the style the applicatio
 Create an entry in `profiles.ini` for the game:
 
 ```
-[Stationeers]
+[Stationeers*]
 width=2560
 height=1440
 x=420
@@ -62,7 +62,7 @@ y=0
 
 In this case we are recording video on a 21:9 3440x1440 monitor, so we want to force it to 16:9 and center it (offset by x=420).
 
-If the window title contains 'Stationeers' the profile values will be used entered into the form.
+Profile names support `*` wildcards. For example, `Stationeers*` matches window titles that start with `Stationeers`, and an exact section name still matches exactly.
 
 # Notes
 

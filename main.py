@@ -2,6 +2,7 @@ import argparse
 import configparser
 import ctypes
 import logging
+import re
 import sys
 from ctypes import WinDLL
 from pathlib import Path
@@ -148,11 +149,28 @@ def delete_window_profile(hwnd):
         config.write(output_file)
 
 
+def iter_matching_profile_names(profiles, title):
+    exact_matches = []
+    wildcard_matches = []
+    normalized_title = title.casefold()
+
+    for profile_name in profiles:
+        if profile_name == title:
+            exact_matches.append(profile_name)
+        elif "*" in profile_name:
+            profile_pattern = re.escape(profile_name.casefold()).replace(r"\*", ".*")
+            if re.fullmatch(profile_pattern, normalized_title):
+                wildcard_matches.append(profile_name)
+
+    return exact_matches + wildcard_matches
+
+
 def load_profile(profiles, title):
-    if title not in profiles:
+    matching_profiles = iter_matching_profile_names(profiles, title)
+    if not matching_profiles:
         return None
 
-    return profiles[title]
+    return profiles[matching_profiles[0]]
 
 
 def refresh_all_visible_windows():
@@ -160,7 +178,7 @@ def refresh_all_visible_windows():
     ALL_VISIBLE_WINDOWS = {}
     win32gui.EnumWindows(win_enum_handler, None)
     VISIBLE_WINDOWS_TITLES_LIST = list(ALL_VISIBLE_WINDOWS.keys())
-    VISIBLE_WINDOWS_TITLES_LIST.sort(key=lambda x: x in PROFILES, reverse=True)
+    VISIBLE_WINDOWS_TITLES_LIST.sort(key=lambda x: bool(iter_matching_profile_names(PROFILES, x)), reverse=True)
     if WINDOW is not None:
         WINDOW[COMBO_KEY_EVENT].update(values=VISIBLE_WINDOWS_TITLES_LIST)
 
@@ -337,7 +355,7 @@ def update_borderless_window(hwnd):
 
 def auto_borderless(hwnd):
     title = win32gui.GetWindowText(hwnd)
-    if title in PROFILES:
+    if load_profile(PROFILES, title) is not None:
         log.info("Profile found, applying settings")
         window_size_update(hwnd)
     update_borderless_window(hwnd)
@@ -363,7 +381,7 @@ def try_auto_borderless(preferred_title: str | None = None) -> bool:
     hwnd = None
 
     for title, window in ALL_VISIBLE_WINDOWS.items():
-        if title in PROFILES:
+        if load_profile(PROFILES, title) is not None:
             if found_profile is None:
                 found_profile = title
                 hwnd = window[HWND_KEY]
