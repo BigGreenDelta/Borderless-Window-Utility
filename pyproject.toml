@@ -7,19 +7,24 @@ requires-python = ">=3.12"
 
 # Runtime dependencies
 dependencies = [
-    "FreeSimpleGUI==5.2.0",
     "pywin32==311",
+    "textual>=8.2.7",
 ]
 
 [project.scripts]
-borderless-window-utility = "main:main"
+borderless-window-utility = "borderless_window_utility.cli:main"
+borderless-window-utility-headless = "borderless_window_utility.cli:headless_main"
 
-[tool.uv]
-# Developer-only dependencies
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "ruff~=0.12.10",
+    "ty~=0.0.44",
     "pyinstaller~=6.15.0",
 ]
 
 [tool.ruff]
 line-length = 120
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

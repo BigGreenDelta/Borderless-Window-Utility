@@ -16,7 +16,7 @@ env:
   TEMP_PATH: '.temp'
   DIST_PATH: '.dist'
   ARTIFACT_NAME: 'Borderless-Window-Utility'
-  ARTIFACT_PATH: '.dist/Borderless-Window-Utility.exe'
+  ARTIFACT_PATH: '.dist/*.exe'
 
 permissions:
   contents: write
@@ -38,7 +38,8 @@ jobs:
       - name: Build release version (uv)
         run: |
           uv sync
-          uv run pyinstaller --onefile --noconsole --name "${{ env.ARTIFACT_NAME }}" --distpath "${{ env.DIST_PATH }}" --workpath "${{ env.TEMP_PATH }}" --specpath "${{ env.TEMP_PATH }}" main.py
+          uv run pyinstaller --onefile --collect-data textual --collect-all rich --name "${{ env.ARTIFACT_NAME }}" --distpath "${{ env.DIST_PATH }}" --workpath "${{ env.TEMP_PATH }}" --specpath "${{ env.TEMP_PATH }}" main.py
+          uv run pyinstaller --onefile --noconsole --name "${{ env.ARTIFACT_NAME }}-Headless" --distpath "${{ env.DIST_PATH }}" --workpath "${{ env.TEMP_PATH }}" --specpath "${{ env.TEMP_PATH }}" main_headless.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
