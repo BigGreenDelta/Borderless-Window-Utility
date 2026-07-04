@@ -42,6 +42,10 @@ class WindowSnapshot:
     title: str
     style: int
     exstyle: int
+    class_name: str = ""
+
+
+BROWSER_CLASS_PREFIXES = ("chrome", "mozilla", "edge")
 
 
 def profile_file_path(script_path: str | Path | None = None) -> Path:
@@ -218,6 +222,11 @@ def get_matching_profile_name(
     return matching_profiles[0]
 
 
+def _is_browser_window(window: WindowSnapshot) -> bool:
+    class_lower = window.class_name.lower()
+    return any(class_lower.startswith(prefix) for prefix in BROWSER_CLASS_PREFIXES)
+
+
 def enumerate_visible_windows() -> dict[str, WindowSnapshot]:
     visible_windows: dict[str, WindowSnapshot] = {}
 
@@ -232,10 +241,17 @@ def enumerate_visible_windows() -> dict[str, WindowSnapshot]:
         try:
             style = win32api.GetWindowLong(hwnd, win32con.GWL_STYLE)
             exstyle = win32api.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+            class_name = win32gui.GetClassName(hwnd)
         except pywintypes.error:
             return
 
-        visible_windows[title] = WindowSnapshot(hwnd=hwnd, title=title, style=style, exstyle=exstyle)
+        visible_windows[title] = WindowSnapshot(
+            hwnd=hwnd,
+            title=title,
+            style=style,
+            exstyle=exstyle,
+            class_name=class_name,
+        )
 
     win32gui.EnumWindows(win_enum_handler, None)
     return visible_windows
@@ -346,10 +362,13 @@ def try_auto_borderless(preferred_title: str | None = None) -> bool:
         window
         for title, window in windows.items()
         if load_profile(profiles, title) is not None
+        and not _is_browser_window(window)
     ]
 
     if len(matched_windows) > 1:
-        log.info("Multiple profile matches found; refusing to auto-apply.")
+        log.info("Multiple profile matches found; refusing to auto-apply. Matches:")
+        for window in matched_windows:
+            log.info("  - %s", window.title)
         return False
 
     if len(matched_windows) == 1:
