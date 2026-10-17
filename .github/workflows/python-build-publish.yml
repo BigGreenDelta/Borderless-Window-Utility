@@ -39,6 +39,9 @@ jobs:
 
       - name: Build release version (uv)
         run: |
+          # Fail the step on any failing command, not only the last one.
+          $PSNativeCommandUseErrorActionPreference = $true
+          $ErrorActionPreference = 'Stop'
           uv sync
           uv run pyinstaller --onefile --collect-data textual --collect-all rich --name "${{ env.ARTIFACT_NAME }}" --distpath "${{ env.DIST_PATH }}" --workpath "${{ env.TEMP_PATH }}" --specpath "${{ env.TEMP_PATH }}" main.py
           uv run pyinstaller --onefile --noconsole --name "${{ env.ARTIFACT_NAME }}-Headless" --distpath "${{ env.DIST_PATH }}" --workpath "${{ env.TEMP_PATH }}" --specpath "${{ env.TEMP_PATH }}" main_headless.py
@@ -50,6 +53,8 @@ jobs:
           name: Borderless-Window-Utility
           path: ${{ env.ARTIFACT_PATH }}
           if-no-files-found: error
+          # .dist is a dot-folder, which upload-artifact@v4 skips by default.
+          include-hidden-files: true
 
       - name: Release
         uses: softprops/action-gh-release@v2
