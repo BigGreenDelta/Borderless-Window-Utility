@@ -18,5 +18,6 @@ REM Build silent headless executable for auto-apply workflows
 uv run pyinstaller --onefile --noconsole --name "Borderless-Window-Utility-Headless" --distpath ".dist" --workpath ".temp" --specpath ".temp" main_headless.py
 
 copy /Y "presets.ini" ".dist\presets.ini" >nul
+if not exist ".dist\settings.ini" copy "settings.ini" ".dist\settings.ini" >nul
 
 popd

@@ -74,6 +74,39 @@ Profile names support `*` wildcards. For example, `Stationeers*` matches window 
 
 The section name is the matcher. Exact section names match exactly, and section names containing `*` act as wildcard patterns. That also means the editable profile name field in the Textual UI is the actual match pattern: if you rename a profile, you are changing what window titles it matches.
 
+# Hide Taskbar
+
+Windows narrower than the monitor (for example a 2560x1440 game centered on a 3440x1440 screen) are not treated as fullscreen by the shell, so the taskbar stays on top and hides the bottom of the game UI. With **Hide Taskbar** enabled, every apply marks the window as fullscreen for the shell (`ITaskbarList2::MarkFullscreenWindow`): while that window is active the taskbar drops behind it, and as soon as another window is activated the taskbar comes back on top. The window is never made always-on-top.
+
+It is a per-window profile option. The **Hide Taskbar** checkbox takes the first cell of the preset grid (presets flow in after it), is saved with the profile like the bounds fields, and counts toward the unsaved-changes marker. In `profiles.ini`:
+
+```
+[Stationeers*]
+width=2560
+height=1440
+x=420
+y=0
+hide_taskbar=true
+```
+
+Manual **Apply** uses the checkbox as it is in the editor; **Load and Apply**, headless auto-apply and Watchdog use the saved profile value. Applying with it off clears the mark from that window again. A missing key means off.
+
+# Auto-apply exclusions
+
+Automatic triggers (headless `--apply-and-exit` and Watchdog Mode) skip windows listed in the `[auto_apply]` section of `settings.ini`, even when a profile pattern matches their title:
+
+```
+[auto_apply]
+exclude_processes = chrome.exe, msedge.exe, firefox.exe, brave.exe, opera.exe, vivaldi.exe, explorer.exe
+exclude_classes =
+```
+
+- `exclude_processes` matches the window's executable name, `exclude_classes` matches its Win32 window class name.
+- Entries are separated by commas or new lines, case-insensitive, and support `*` / `?` wildcards (for example `Chrome_WidgetWin_*`).
+- There is no built-in list in code: `settings.ini` is the only source. The shipped file contains the list shown above; a missing key or file means nothing is excluded.
+- Manual **Apply** / **Load and Apply** in the UI and an explicit target title ignore these lists.
+- The file is rewritten when the Watchdog delta changes, so comments in `settings.ini` are not kept.
+
 # Presets
 
 Reusable bounds presets live in `presets.ini` next to `profiles.ini`. They are not window-title matchers; they are only reusable bounds templates for the Textual UI.
@@ -81,18 +114,26 @@ Reusable bounds presets live in `presets.ini` next to `profiles.ini`. They are n
 The default file currently contains:
 
 ```
-[2560x1392]
+[(C) 2560x1440]
+x=1280
+y=0
+width=2560
+height=1440
+
+[(C) 2560x1392]
 x=1280
 y=0
 width=2560
 height=1392
 
-[2560x1440]
-x=1280
+[(C) 2474x1392]
+x=1323
 y=0
-width=2560
-height=1440
+width=2474
+height=1392
 ```
+
+Buttons appear in file order, so the first preset sits next to the **Hide Taskbar** checkbox.
 
 Pressing a preset button in the UI updates only the bounds fields. It does not change the profile match pattern field, so you can pick a preset for a newly selected window and then save a real matching profile for that window. The matching preset button is highlighted whenever the current bounds exactly match one of the saved presets.
 

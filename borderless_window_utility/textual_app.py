@@ -4,11 +4,16 @@ from rich.cells import cell_len, set_cell_size
 from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.containers import Grid, Horizontal, Vertical
-from textual.widgets import Button, Header, Input, Label, OptionList, Static
+from textual.content import Content
+from textual.style import Style
+from textual.timer import Timer
+from textual.widgets import Button, Checkbox, Header, Input, Label, OptionList, Static
 
 from .core import (
+    DEFAULT_WATCHDOG_TOLERANCE_PX,
     BorderlessError,
     WindowBounds,
+    WindowProfile,
     WindowSnapshot,
     apply_borderless_window,
     delete_window_profile,
@@ -19,10 +24,31 @@ from .core import (
     parse_window_bounds,
     read_presets,
     read_profiles,
+    read_watchdog_tolerance_px,
+    run_watchdog_pass,
+    save_watchdog_tolerance_px,
     save_window_profile,
     sort_window_titles,
     title_matches_profile_pattern,
 )
+
+WATCHDOG_POLL_INTERVAL_SECONDS = 2.0
+
+
+class WatchdogCheckbox(Checkbox):
+    @property
+    def _button(self) -> Content:
+        button_style = self.get_visual_style("toggle--button")
+        side_style = Style(
+            foreground=button_style.background,
+            background=self.background_colors[1],
+        )
+        inner = "V" if self.value else "X"
+        return Content.assemble(
+            (self.BUTTON_LEFT, side_style),
+            (inner, button_style),
+            (self.BUTTON_RIGHT, side_style),
+        )
 
 
 class WindowOptionList(OptionList):
@@ -80,12 +106,12 @@ class BorderlessWindowApp(App[None]):
     #window-pane {
         width: 4fr;
         min-width: 48;
-        padding: 0 2 1 1;
+        padding: 0 2 0 1;
     }
 
     #editor-pane {
         width: 3fr;
-        padding: 0 1 1 2;
+        padding: 0 1 0 2;
     }
 
     .button-row {
@@ -205,7 +231,7 @@ class BorderlessWindowApp(App[None]):
     #window-list {
         width: 1fr;
         height: 1fr;
-        margin: 0 0 1 0;
+        margin: 0;
     }
 
     #status {
@@ -240,6 +266,41 @@ class BorderlessWindowApp(App[None]):
         min-width: 5;
         margin-right: 0;
     }
+
+    #watchdog-panel {
+        dock: bottom;
+        height: auto;
+        margin: 0;
+    }
+
+    #watchdog-row {
+        height: auto;
+        margin: 0;
+    }
+
+    #hide-taskbar-checkbox {
+        width: 1fr;
+        margin-right: 1;
+    }
+
+    #watchdog-checkbox, #hide-taskbar-checkbox {
+        border: none;
+        padding: 0 1;
+    }
+
+    #watchdog-row Label {
+        width: auto;
+        content-align: left middle;
+        margin: 0 1 0 1;
+    }
+
+    #watchdog-delta {
+        width: 8;
+        height: 1;
+        min-height: 1;
+        border: none;
+        padding: 0 1;
+    }
     """
     BINDINGS = [
         ("q", "quit", "Quit"),
@@ -249,16 +310,18 @@ class BorderlessWindowApp(App[None]):
 
     def __init__(self) -> None:
         super().__init__()
-        self.profiles: dict[str, WindowBounds] = {}
+        self.profiles: dict[str, WindowProfile] = {}
         self.windows: dict[str, WindowSnapshot] = {}
         self.window_titles: list[str] = []
         self.filtered_titles: list[str] = []
         self.selected_title: str | None = None
         self.active_profile_name: str | None = None
-        self.loaded_profile_bounds: WindowBounds | None = None
+        self.loaded_profile: WindowProfile | None = None
         self.presets: dict[str, WindowBounds] = {}
         self._active_preset_name: str | None = None
         self._preset_buttons: dict[str, Button] = {}
+        self._watchdog_timer: Timer | None = None
+        self._watchdog_tolerance_px = DEFAULT_WATCHDOG_TOLERANCE_PX
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -285,7 +348,13 @@ class BorderlessWindowApp(App[None]):
                         yield Label("Height")
                         yield Input("1440", id="height")
                 with Vertical(id="preset-section"):
-                    yield Grid(id="preset-grid")
+                    # Hide Taskbar takes the first cell; preset buttons flow in after it.
+                    with Grid(id="preset-grid"):
+                        yield WatchdogCheckbox(
+                            "Hide Taskbar",
+                            id="hide-taskbar-checkbox",
+                            tooltip="Saved with the profile. Hides the taskbar behind this window while it is active.",
+                        )
                 with Horizontal(classes="apply-button-row"):
                     yield Button("Apply", id="apply", variant="primary", classes="action-button")
                 yield Static("", id="profile-gap")
@@ -299,10 +368,24 @@ class BorderlessWindowApp(App[None]):
                     yield Button("X", id="delete", classes="delete-button", tooltip="Delete saved profile")
                 with Horizontal(classes="apply-button-row"):
                     yield Button("Load and Apply", id="load-apply", variant="primary", classes="action-button")
+                with Vertical(id="watchdog-panel"):
+                    with Horizontal(id="watchdog-row"):
+                        yield WatchdogCheckbox("Watchdog Mode", id="watchdog-checkbox")
+                        yield Label("Delta (px)")
+                        yield Input(
+                            str(DEFAULT_WATCHDOG_TOLERANCE_PX),
+                            id="watchdog-delta",
+                            type="integer",
+                        )
         yield Static("Refreshing visible windows...", id="status")
 
     def on_mount(self) -> None:
         self.refresh_windows()
+        try:
+            self._watchdog_tolerance_px = read_watchdog_tolerance_px()
+        except BorderlessError:
+            self._watchdog_tolerance_px = DEFAULT_WATCHDOG_TOLERANCE_PX
+        self.query_one("#watchdog-delta", Input).value = str(self._watchdog_tolerance_px)
 
     def on_resize(self, _event: events.Resize) -> None:
         if self.window_titles:
@@ -318,12 +401,12 @@ class BorderlessWindowApp(App[None]):
             return
 
         try:
-            bounds = self._read_input_bounds()
+            profile = self._read_editor_profile()
         except BorderlessError as exc:
             self._set_status(str(exc))
             return
 
-        self.apply_selected_window(title, bounds)
+        self.apply_selected_window(title, profile)
 
     @work(thread=True, exclusive=True)
     def refresh_windows(self, preserve_selection: bool = False) -> None:
@@ -381,8 +464,8 @@ class BorderlessWindowApp(App[None]):
             matched_profile_name = get_matching_profile_name(profiles, title)
             if matched_profile_name is None:
                 raise BorderlessError("No saved profile for the selected window.")
-            bounds = load_profile(profiles, title)
-            if bounds is None:
+            profile = load_profile(profiles, title)
+            if profile is None:
                 raise BorderlessError("No saved profile for the selected window.")
         except BorderlessError as exc:
             self.call_from_thread(self._set_status, str(exc))
@@ -392,7 +475,7 @@ class BorderlessWindowApp(App[None]):
             self._apply_loaded_profile,
             title,
             profiles,
-            bounds,
+            profile,
             matched_profile_name,
             None,
         )
@@ -409,10 +492,10 @@ class BorderlessWindowApp(App[None]):
             matched_profile_name = get_matching_profile_name(profiles, title)
             if matched_profile_name is None:
                 raise BorderlessError("No saved profile for the selected window.")
-            bounds = load_profile(profiles, title)
-            if bounds is None:
+            profile = load_profile(profiles, title)
+            if profile is None:
                 raise BorderlessError("No saved profile for the selected window.")
-            apply_borderless_window(snapshot.hwnd, bounds)
+            apply_borderless_window(snapshot.hwnd, profile.bounds, profile.hide_taskbar)
         except BorderlessError as exc:
             self.call_from_thread(self._set_status, str(exc))
             return
@@ -421,20 +504,35 @@ class BorderlessWindowApp(App[None]):
             self._apply_loaded_profile,
             title,
             profiles,
-            bounds,
+            profile,
             matched_profile_name,
             f"Loaded and applied profile: {self._format_title(matched_profile_name)}",
         )
 
     @work(thread=True, exclusive=True)
-    def apply_selected_window(self, title: str, bounds: WindowBounds) -> None:
+    def _run_watchdog_pass(self) -> None:
+        try:
+            reapplied_titles = run_watchdog_pass(tolerance_px=self._watchdog_tolerance_px)
+        except BorderlessError as exc:
+            self.call_from_thread(self._set_status, str(exc))
+            return
+
+        if reapplied_titles:
+            self.call_from_thread(self._report_watchdog_reapplied, reapplied_titles)
+
+    def _report_watchdog_reapplied(self, reapplied_titles: list[str]) -> None:
+        titles = ", ".join(self._format_title(title) for title in reapplied_titles)
+        self._set_status(f"Watchdog reapplied profile to: {titles}")
+
+    @work(thread=True, exclusive=True)
+    def apply_selected_window(self, title: str, profile: WindowProfile) -> None:
         snapshot = self.windows.get(title)
         if snapshot is None:
             self.call_from_thread(self._set_status, "Window not found. Refresh the list and try again.")
             return
 
         try:
-            apply_borderless_window(snapshot.hwnd, bounds)
+            apply_borderless_window(snapshot.hwnd, profile.bounds, profile.hide_taskbar)
         except BorderlessError as exc:
             self.call_from_thread(self._set_status, str(exc))
             return
@@ -454,6 +552,38 @@ class BorderlessWindowApp(App[None]):
         self._update_profile_state_indicator()
         self._update_profile_match_warning()
         self._sync_preset_buttons()
+
+    @on(Checkbox.Changed, "#watchdog-checkbox")
+    def handle_watchdog_toggled(self, event: Checkbox.Changed) -> None:
+        if event.value:
+            self._watchdog_timer = self.set_interval(
+                WATCHDOG_POLL_INTERVAL_SECONDS, self._run_watchdog_pass
+            )
+            self._set_status("Watchdog mode enabled.")
+        else:
+            if self._watchdog_timer is not None:
+                self._watchdog_timer.stop()
+                self._watchdog_timer = None
+            self._set_status("Watchdog mode disabled.")
+
+    @on(Checkbox.Changed, "#hide-taskbar-checkbox")
+    def handle_hide_taskbar_toggled(self, _event: Checkbox.Changed) -> None:
+        self._update_profile_state_indicator()
+
+    @on(Input.Changed, "#watchdog-delta")
+    def handle_watchdog_delta_change(self, event: Input.Changed) -> None:
+        try:
+            tolerance_px = int(event.value)
+            if tolerance_px < 0:
+                raise ValueError
+        except ValueError:
+            return
+
+        self._watchdog_tolerance_px = tolerance_px
+        try:
+            save_watchdog_tolerance_px(tolerance_px)
+        except BorderlessError as exc:
+            self._set_status(str(exc))
 
     @on(OptionList.OptionHighlighted, "#window-list")
     def handle_window_highlighted(self, event: OptionList.OptionHighlighted) -> None:
@@ -502,7 +632,7 @@ class BorderlessWindowApp(App[None]):
 
     def _apply_window_refresh(
         self,
-        profiles: dict[str, WindowBounds],
+        profiles: dict[str, WindowProfile],
         presets: dict[str, WindowBounds],
         windows: dict[str, WindowSnapshot],
         window_titles: list[str],
@@ -523,18 +653,20 @@ class BorderlessWindowApp(App[None]):
     def _apply_selected_window(
         self,
         title: str,
-        profiles: dict[str, WindowBounds],
+        profiles: dict[str, WindowProfile],
         bounds: WindowBounds,
         matched_profile_name: str | None,
     ) -> None:
         self.profiles = profiles
         self.selected_title = title
         self.active_profile_name = matched_profile_name
-        self.loaded_profile_bounds = None
+        self.loaded_profile = None
         self._set_input_value("x", bounds.x)
         self._set_input_value("y", bounds.y)
         self._set_input_value("width", bounds.width)
         self._set_input_value("height", bounds.height)
+        matched_profile = profiles.get(matched_profile_name) if matched_profile_name else None
+        self._set_hide_taskbar_value(matched_profile.hide_taskbar if matched_profile else False)
         self._set_profile_name_value(self.active_profile_name or title)
         self._update_profile_state_indicator()
         self._update_profile_match_warning()
@@ -543,19 +675,20 @@ class BorderlessWindowApp(App[None]):
     def _apply_loaded_profile(
         self,
         title: str,
-        profiles: dict[str, WindowBounds],
-        bounds: WindowBounds,
+        profiles: dict[str, WindowProfile],
+        profile: WindowProfile,
         matched_profile_name: str,
         status_message: str | None,
     ) -> None:
         self.profiles = profiles
         self.selected_title = title
         self.active_profile_name = matched_profile_name
-        self.loaded_profile_bounds = bounds
-        self._set_input_value("x", bounds.x)
-        self._set_input_value("y", bounds.y)
-        self._set_input_value("width", bounds.width)
-        self._set_input_value("height", bounds.height)
+        self.loaded_profile = profile
+        self._set_input_value("x", profile.bounds.x)
+        self._set_input_value("y", profile.bounds.y)
+        self._set_input_value("width", profile.bounds.width)
+        self._set_input_value("height", profile.bounds.height)
+        self._set_hide_taskbar_value(profile.hide_taskbar)
         self._set_profile_name_value(matched_profile_name)
         self._update_profile_state_indicator()
         self._update_profile_match_warning()
@@ -569,10 +702,10 @@ class BorderlessWindowApp(App[None]):
 
         try:
             profile_name = self._read_profile_name()
-            bounds = self._read_input_bounds()
+            profile = self._read_editor_profile()
             save_window_profile(
                 profile_name,
-                bounds,
+                profile,
                 original_title=self.active_profile_name,
             )
             self.profiles = read_profiles()
@@ -582,7 +715,7 @@ class BorderlessWindowApp(App[None]):
 
         renamed_profile = self.active_profile_name and self.active_profile_name != profile_name
         self.active_profile_name = profile_name
-        self.loaded_profile_bounds = bounds
+        self.loaded_profile = profile
         self.window_titles = sort_window_titles(self.windows, self.profiles)
         self._rebuild_window_list(title)
         self._update_profile_state_indicator()
@@ -607,7 +740,7 @@ class BorderlessWindowApp(App[None]):
             return
 
         self.active_profile_name = None
-        self.loaded_profile_bounds = None
+        self.loaded_profile = None
         self.window_titles = sort_window_titles(self.windows, self.profiles)
         self._rebuild_window_list(self.selected_title)
         self._set_profile_name_value(self.selected_title)
@@ -622,6 +755,15 @@ class BorderlessWindowApp(App[None]):
             self.query_one("#width", Input).value,
             self.query_one("#height", Input).value,
         )
+
+    def _read_editor_profile(self) -> WindowProfile:
+        return WindowProfile(
+            bounds=self._read_input_bounds(),
+            hide_taskbar=self.query_one("#hide-taskbar-checkbox", Checkbox).value,
+        )
+
+    def _set_hide_taskbar_value(self, value: bool) -> None:
+        self.query_one("#hide-taskbar-checkbox", Checkbox).value = value
 
     def _read_profile_name(self) -> str:
         profile_name = self.query_one("#profile-name", Input).value.strip()
@@ -640,7 +782,7 @@ class BorderlessWindowApp(App[None]):
 
     def _update_profile_state_indicator(self) -> None:
         marker = self.query_one("#profile-state", Static)
-        if self.active_profile_name is None or self.loaded_profile_bounds is None:
+        if self.active_profile_name is None or self.loaded_profile is None:
             if self.active_profile_name is None:
                 marker.update("-")
                 marker.tooltip = "No saved profile was found for the selected window."
@@ -651,11 +793,11 @@ class BorderlessWindowApp(App[None]):
 
         profile_name_matches = self.query_one("#profile-name", Input).value.strip() == self.active_profile_name
         try:
-            current_bounds = self._read_input_bounds()
+            current_profile = self._read_editor_profile()
         except BorderlessError:
-            current_bounds = None
+            current_profile = None
 
-        if profile_name_matches and current_bounds == self.loaded_profile_bounds:
+        if profile_name_matches and current_profile == self.loaded_profile:
             marker.update("=")
             marker.tooltip = "Saved profile is loaded with no unsaved changes."
         else:
@@ -682,7 +824,7 @@ class BorderlessWindowApp(App[None]):
 
     def _rebuild_preset_grid(self) -> None:
         grid = self.query_one("#preset-grid", Grid)
-        grid.remove_children()
+        grid.remove_children(".preset-button")
         self._preset_buttons.clear()
 
         buttons: list[Button] = []
@@ -741,7 +883,7 @@ class BorderlessWindowApp(App[None]):
         else:
             self.selected_title = None
             self.active_profile_name = None
-            self.loaded_profile_bounds = None
+            self.loaded_profile = None
             self._set_profile_name_value("")
             self._update_profile_state_indicator()
             self._update_profile_match_warning()
